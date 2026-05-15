@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimuMetalurgia © | Software de Simulación y Aprendizaje: Módulo de Densidad</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <style>
+        :root {
+            --primary: #003366; --secondary: #0f172a; --accent: #dc2626;
+            --bg: #f8fafc; --surface: #ffffff; --text: #1e293b; --border: #e2e8f0;
+        }
+
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; margin: 0; background-color: var(--bg); color: var(--text); overflow-x: hidden; display: flex; flex-direction: column; min-height: 100vh; }
+
+        /* NAVEGACIÓN PERSISTENTE LIMPIA */
+        nav {
+            background: var(--secondary); color: white; padding: 15px 20px;
+            position: sticky; top: 0; z-index: 1000; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap;
+        }
+        nav button {
+            background: transparent; border: none;
+            color: #cbd5e1; padding: 10px 20px; border-radius: 6px; cursor: pointer;
+            font-weight: 700; transition: 0.3s; font-size: 0.9em; text-transform: uppercase;
+        }
+        nav button:hover { color: white; background: rgba(255,255,255,0.1); }
+        nav button.active-nav { 
+            background: var(--primary); color: white; box-shadow: 0 4px 10px rgba(0, 51, 102, 0.3);
+        }
+
+        /* SECCIONES */
+        section { display: none; padding: 40px 20px; max-width: 1200px; margin: 0 auto; animation: fadeIn 0.4s ease-out; flex-grow: 1; width: 100%; }
+        section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* PRESENTACIÓN */
+        #presentacion { text-align: center; padding-top: 80px; }
+        .hero-card { background: var(--surface); padding: 60px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
+        .btn-large {
+            display: inline-block; padding: 14px 35px; margin: 8px;
+            background: var(--primary); color: white; border: none;
+            border-radius: 8px; font-size: 1.05em; font-weight: 800;
+            cursor: pointer; transition: 0.2s; text-transform: uppercase;
+            box-shadow: 0 4px 12px rgba(0, 51, 102, 0.2);
+        }
+        .btn-large:hover { transform: translateY(-2px); background: #002244; box-shadow: 0 6px 15px rgba(0, 51, 102, 0.3); }
+
+        /* SIMULADOR UI LIMPIA */
+        .sim-container { display: grid; grid-template-columns: 360px 1fr; gap: 30px; align-items: start; }
+        .controls { background: var(--surface); padding: 30px; border-radius: 16px; box-shadow: 0 4px 25px rgba(0,0,0,0.04); }
+        .visuals { display: grid; grid-template-rows: auto auto; gap: 30px; }
+        .vis-card { background: var(--surface); border-radius: 16px; padding: 25px; text-align: center; position: relative; overflow: hidden; box-shadow: 0 4px 25px rgba(0,0,0,0.04); }
+        
+        .input-group { margin-bottom: 25px; }
+        label { display: block; font-weight: 800; font-size: 0.75em; text-transform: uppercase; color: #64748b; margin-bottom: 8px; letter-spacing: 0.5px; }
+        select, input { width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; font-size: 1em; font-weight: 700; color: var(--primary); background: #f8fafc; outline: none; transition: 0.2s; }
+        select:focus, input:focus { border-color: var(--primary); background: white; box-shadow: 0 0 0 3px rgba(0,51,102,0.05); }
+        
+        .stat-card { background: #f1f5f9; padding: 20px; border-radius: 12px; text-align: center; border: 1px solid #e2e8f0; }
+        #resultValue { font-size: 2.2em; font-weight: 900; color: var(--accent); word-break: break-all; margin-top: 5px; }
+
+        /* VISOR 3D */
+        #ingot3d-container { width: 100%; height: 240px; border-radius: 8px; overflow: hidden; background: #f1f5f9; cursor: grab; border: 1px solid var(--border); }
+        #ingot3d-container:active { cursor: grabbing; }
+
+        /* CILINDRO DE AGUA */
+        #water-tank {
+            width: 130px; height: 260px; background: linear-gradient(to bottom, #e0f2fe 0%, #38bdf8 100%);
+            border: 4px solid #475569; border-top: none; margin: 60px auto 0 auto; 
+            position: relative; border-radius: 0 0 15px 15px;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.1);
+        }
+        #water-surface {
+            position: absolute; top: 0; left: 0; width: 100%; height: 8px;
+            background: rgba(255,255,255,0.6); border-radius: 50%; transform: translateY(-4px);
+        }
+        #ball {
+            width: 32px; height: 32px; background: radial-gradient(circle at 30% 30%, #e2e8f0, #475569);
+            border-radius: 50%; position: absolute; left: calc(50% - 16px); top: -45px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3); z-index: 2;
+        }
+
+        /* TEORÍA, MANUAL Y ESTILOS NATIVOS DE FÓRMULAS */
+        .theory-content { background: var(--surface); padding: 50px; border-radius: 16px; line-height: 1.8; box-shadow: 0 4px 25px rgba(0,0,0,0.04); }
+        .theory-content h1 { color: var(--primary); margin-top: 0; font-size: 2em; }
+        .math-box { background: #f8fafc; padding: 25px; border-radius: 12px; border-left: 4px solid var(--primary); margin: 25px 0; font-size: 1.1em; overflow-x: auto; }
+        
+        .math-formula { display: flex; align-items: center; justify-content: center; font-size: 1.5em; font-weight: 900; color: var(--primary); margin: 15px 0; }
+        .math-fraction { display: inline-flex; flex-direction: column; align-items: center; margin-left: 10px; font-size: 0.9em; }
+        .math-numerator { border-bottom: 3px solid var(--primary); padding: 0 10px; }
+        .math-denominator { padding: 0 10px; }
+
+        .manual-step { display: flex; align-items: flex-start; gap: 20px; margin-bottom: 30px; background: #f8fafc; padding: 25px; border-radius: 12px; border: 1px solid var(--border); }
+        .step-num { background: var(--primary); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1em; flex-shrink: 0; }
+        .manual-step h3 { margin-top: 0; color: var(--primary); margin-bottom: 10px; }
+        .manual-step p { margin: 0; color: #475569; }
+
+        /* PESTAÑAS DE TEORÍA */
+        .theory-tabs { display: flex; gap: 15px; border-bottom: 3px solid var(--border); padding-bottom: 15px; margin-bottom: 35px; }
+        .th-tab { background: transparent; border: none; font-size: 1.2em; font-weight: 800; color: #94a3b8; cursor: pointer; padding: 10px 25px; transition: 0.3s; text-transform: uppercase; border-radius: 8px; letter-spacing: 0.5px; }
+        .th-tab:hover { color: var(--primary); background: #f1f5f9; }
+        .th-tab.active-th { color: white; background: var(--primary); box-shadow: 0 4px 12px rgba(0, 51, 102, 0.2); }
+        
+        .th-content { display: none; animation: fadeIn 0.4s ease-out; }
+        .th-content.active-content { display: block; }
+
+        /* SISTEMA DE ACORDEONES Y ESTILOS DE IMÁGENES */
+        .acc-btn {
+            width: 100%; text-align: left; background: var(--surface);
+            border: 1px solid var(--border); padding: 18px 25px;
+            font-size: 1.1em; font-weight: 800; color: var(--primary);
+            cursor: pointer; border-radius: 12px; margin-top: 15px;
+            display: flex; justify-content: space-between; align-items: center;
+            transition: 0.3s; box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+        }
+        .acc-btn:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: 0 6px 15px rgba(0,0,0,0.05); }
+        .acc-btn.active-acc { 
+            background: var(--primary); color: white; 
+            border-bottom-left-radius: 0; border-bottom-right-radius: 0; 
+            transform: none; 
+        }
+        .acc-btn .icon { font-size: 1.5em; line-height: 1; transition: 0.3s; }
+        .acc-btn.active-acc .icon { transform: rotate(45deg); }
+        
+        .acc-content {
+            display: none; padding: 30px; background: #ffffff;
+            border: 1px solid var(--border); border-top: none;
+            border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;
+            animation: fadeIn 0.3s ease-in-out;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.02);
+        }
+        .acc-content.active-acc-content { display: block; }
+
+        /* IMÁGENES Y PIES DE FOTO */
+        .img-container { margin: 25px 0; text-align: center; }
+        .img-container img { width: 100%; max-width: 800px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); border: 1px solid var(--border); }
+        .img-caption { font-size: 0.9em; color: #475569; text-align: justify; margin-top: 15px; line-height: 1.6; font-style: italic; border-left: 4px solid var(--accent); padding-left: 15px; background: #f8fafc; padding: 15px; border-radius: 0 8px 8px 0; }
+
+        /* PIE DE PÁGINA (CRÉDITOS) */
+        footer {
+            text-align: center; padding: 25px 20px; margin-top: 40px;
+            border-top: 1px solid var(--border); color: #64748b; font-size: 0.9em;
+            background: var(--bg); width: 100%;
+        }
+        footer span { color: var(--primary); font-weight: 800; }
+
+    </style>
+</head>
+<body>
+
+    <nav>
+        <button id="nav-presentacion" onclick="showSection('presentacion')" class="active-nav">Presentación</button>
+        <button id="nav-simulador" onclick="showSection('simulador')">Simulador 3D</button>
+        <button id="nav-teoria" onclick="showSection('teoria')">Teoría y Aplicaciones</button>
+        <button id="nav-manual" onclick="showSection('manual')">Manual de Uso</button>
+    </nav>
+
+    <section id="presentacion" class="active">
+        <div class="hero-card">
+            <h1 style="font-size: 2.8em; color: var(--primary); margin-bottom: 5px;">Introducción a la Metalurgia</h1>
+            <h2 style="color: var(--accent); margin-top: 0; margin-bottom: 20px;">Módulo 01: Densidad Física</h2>
+            <p style="color: #475569; font-size: 1.15em; max-width: 800px; margin: 0 auto 40px auto; line-height: 1.6;">
+                La densidad es la huella dactilar física de cada metal. Comprender la relación entre la masa y el volumen es el primer paso para diseñar desde aleaciones aeroespaciales súper ligeras hasta blindajes de alta densidad.
+            </p>
+            <div>
+                <button class="btn-large" onclick="showSection('simulador')">Abrir Simulador 3D</button>
+                <button class="btn-large" style="background: #334155;" onclick="showSection('teoria')">Estudiar Teoría</button>
+                <button class="btn-large" style="background: #64748b;" onclick="showSection('manual')">Ver Manual</button>
+            </div>
+        </div>
+    </section>
+
+    <section id="simulador">
+        <div class="sim-container">
+            <div class="controls">
+                <div class="input-group">
+                    <label>1. Seleccionar Aleación</label>
+                    <select id="material" onchange="updateSimulation()">
+                        </select>
+                </div>
+                
+                <div class="input-group">
+                    <label>2. Lógica de Cálculo</label>
+                    <select id="mode" onchange="updateSimulation()">
+                        <option value="massToVol">Ingresar MASA → Calcular VOLUMEN</option>
+                        <option value="volToMass">Ingresar VOLUMEN → Calcular MASA</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label id="inputLabel">Masa del Lingote (g)</label>
+                    <input type="text" id="userInput" placeholder="" oninput="calculate()">
+                </div>
+
+                <div class="stat-card">
+                    <label id="resultLabel">Volumen Resultante (cm³)</label>
+                    <div id="resultValue">0,00</div>
+                </div>
+
+                <button class="btn-large" style="width: 100%; margin: 25px 0 0 0; font-size: 0.9em; padding: 15px;" onclick="dropBall()">Lanzar Probeta al Fluido</button>
+            </div>
+
+            <div class="visuals">
+                <div class="vis-card">
+                    <label>Morfología Volumétrica del Lingote 3D</label>
+                    <div id="ingot3d-container"></div>
+                    <div id="material-info" style="margin-top: 15px; font-weight: 900; font-size: 1.2em; color: var(--primary);">Acero AISI 1020</div>
+                    <div id="material-rho" style="color: var(--accent); font-weight: bold; font-size: 0.9em;">ρ = 7,85 g/cm³</div>
+                </div>
+                
+                <div class="vis-card">
+                    <label>Cinética de Inmersión (Fluido: Agua ρ= 1 [g/cm³])</label>
+                    <div id="water-tank">
+                        <div id="water-surface"></div>
+                        <div id="ball"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="teoria">
+        <div class="theory-content">
+            
+            <div class="theory-tabs">
+                <button id="tab-teo" onclick="switchTheoryTab('t-teo')" class="th-tab active-th">Teoría Fundamental</button>
+                <button id="tab-app" onclick="switchTheoryTab('t-app')" class="th-tab">Aplicaciones Industriales</button>
+            </div>
+
+            <div id="t-teo" class="th-content active-content">
+                <h2 style="color: var(--primary); margin-bottom: 25px;">Fundamentos de la Densidad</h2>
+                
+                <button class="acc-btn" onclick="toggleAccordion(this)">¿Qué es la Densidad? <span class="icon">+</span></button>
+                <div class="acc-content">
+                    <p>La <strong>densidad (&rho;)</strong> es una propiedad física intensiva de la materia. Representa la cantidad de masa empacada dentro de un volumen tridimensional determinado. A nivel metalúrgico, esta propiedad no es aleatoria; es el resultado estricto del peso atómico de los elementos que conforman la aleación y de la eficiencia con la que estos átomos se organizan en su red cristalina (Factor de Empaquetamiento Atómico).</p>
+                    
+                    <p>La ecuación constitutiva macroscópica que rige esta relación es:</p>
+                    <div class="math-box">
+                        <div class="math-formula">
+                            <span>&rho; = </span>
+                            <div class="math-fraction">
+                                <span class="math-numerator">m</span>
+                                <span class="math-denominator">V</span>
+                            </div>
+                        </div>
+                        <strong>Donde:</strong><br><br>
+                        • <strong>&rho; (Rho):</strong> Densidad del material (comúnmente expresada en g/cm&sup3; o kg/m&sup3;).<br>
+                        • <strong>m:</strong> Masa total de la muestra metálica.<br>
+                        • <strong>V:</strong> Volumen tridimensional que ocupa dicha muestra en el espacio.
+                    </div>
+                </div>
+
+                <button class="acc-btn" onclick="toggleAccordion(this)">Cálculo de Volumen (Conociendo Masa y Densidad) <span class="icon">+</span></button>
+                <div class="acc-content">
+                    <p>En la práctica industrial de las fundiciones, es común comprar materia prima por peso (masa), pero el ingeniero necesita saber cuánto espacio físico ocupará ese metal al fundirse dentro de un crisol o molde. Despejando matemáticamente la ecuación principal, podemos hallar el volumen:</p>
+                    
+                    <div class="math-box">
+                        <div class="math-formula">
+                            <span>V = </span>
+                            <div class="math-fraction">
+                                <span class="math-numerator">m</span>
+                                <span class="math-denominator">&rho;</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p style="font-size: 0.95em; color: #475569;"><em><strong>Ejemplo Práctico:</strong> Si tienes 500 gramos de chatarra de Aluminio (&rho; = 2,70 g/cm&sup3;), el volumen exacto que ocupará ese metal al fundirse será V = 500 / 2,70 = 185,18 cm&sup3;.</em></p>
+                </div>
+
+                <button class="acc-btn" onclick="toggleAccordion(this)">Cálculo de Masa (Conociendo Volumen y Densidad) <span class="icon">+</span></button>
+                <div class="acc-content">
+                    <p>Por otro lado, cuando los ingenieros de diseño crean una pieza en un software CAD (como SolidWorks, Inventor o AutoCAD), el programa calcula algorítmicamente el volumen exacto de esa geometría en 3D. Para predecir cuánto pesará la pieza final en la vida real antes de fabricarla, multiplicamos ese volumen por la densidad del material seleccionado:</p>
+                    
+                    <div class="math-box">
+                        <div class="math-formula">
+                            m = &rho; &times; V
+                        </div>
+                    </div>
+
+                    <p style="font-size: 0.95em; color: #475569;"><em><strong>Ejemplo Práctico:</strong> Si diseñaste un engranaje de Acero (&rho; = 7,85 g/cm&sup3;) cuyo volumen tridimensional es de 100 cm&sup3;, la masa de la pieza una vez mecanizada será m = 7,85 &times; 100 = 785 gramos.</em></p>
+                </div>
+            </div>
+
+            <div id="t-app" class="th-content">
+                <h2 style="color: var(--primary); margin-bottom: 25px;">Selección de Materiales en la Industria</h2>
+                <p style="margin-bottom: 20px;">No existe un metal "perfecto"; existe el metal adecuado para cada necesidad industrial. Haz clic en cada sector para descubrir cómo la densidad dicta las reglas del diseño moderno.</p>
+
+                <button class="acc-btn" onclick="toggleAccordion(this)">🚀 Sector Aeroespacial <span class="icon">+</span></button>
+                <div class="acc-content">
+                    <p>Cada kilogramo extra en un avión o cohete consume miles de galones de combustible a lo largo de su vida útil. Por ello, la ingeniería aeroespacial descarta los aceros pesados y utiliza aleaciones de baja densidad pero alta resistencia, como el <strong>Aluminio (Series 2000 y 7000)</strong>, el <strong>Titanio</strong> y aleaciones avanzadas de <strong>Magnesio</strong>.</p>
+                    
+                    <div class="img-container">
+                        <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiSWJ-n70Ei0MuQs3CstreDfsnjgazYB_EUsnruafQlTNtPSYommYts-_-2VTCiUBV4H98aciaNSw-jTm2ZcZ3R6fd0vl9OVHO63LNaPq8Kdt1-C3v_Z2zxwsqM2QdahBM9c6abXhD5ne-hD0nAzjuWKzjYR7ZeEnIS0SE9DR62Ltw4Ay_fY8brohomUg/s3242/Artemis-I.%20%20Ruta%20hacia%20la%20Luna,%20Cohete%20y%20esquema%20del%20SLS.%20NASA.jpg" alt="Misión Artemis 2 de la NASA">
+                        <p class="img-caption"><strong>Nave Artemis 2 (NASA):</strong> Esquema detallado del Sistema de Lanzamiento Espacial (SLS), detallando sus diferentes secciones modulares (propulsión, tripulación) y la compleja trayectoria planificada hacia la órbita lunar. En misiones espaciales, un material excesivamente denso impediría que los propulsores lograran vencer la gravedad terrestre.</p>
+                    </div>
+                </div>
+
+                <button class="acc-btn" onclick="toggleAccordion(this)">⚓ Ingeniería Náutica <span class="icon">+</span></button>
+                <div class="acc-content">
+                    <p>El Principio de Arquímedes es la ley de los mares. Los ingenieros calculan la densidad global de los cascos de los barcos y submarinos para garantizar la flotabilidad o la inmersión controlada. Se utilizan lastres de metales extremadamente pesados, como el <strong>Plomo</strong>, en las quillas de los veleros y barcos para mantener el centro de gravedad bajo y evitar que vuelquen.</p>
+                    
+                    <div class="img-container">
+                        <img src="https://www.gob.mx/cms/uploads/article/main_image/69525/IMG-20180525-WA0000.jpg" alt="Construcción de Buque">
+                        <p class="img-caption"><strong>Corte Transversal de un Buque en Construcción:</strong> En esta imagen el buque está "partido por la mitad" dentro del astillero, permitiendo observar el enmallado estructural de todas las plantas y niveles internos. El cálculo minucioso de la densidad de cada viga de acero garantiza que el buque mantenga el equilibrio y no se hunda a plena carga.</p>
+                    </div>
+                </div>
+
+                <button class="acc-btn" onclick="toggleAccordion(this)">🏎️ Sector Automotriz <span class="icon">+</span></button>
+                <div class="acc-content">
+                    <p>El "aligeramiento" (Lightweighting) es la tendencia global para reducir las emisiones de gases contaminantes y aumentar la autonomía de los vehículos eléctricos. Los pesados bloques de motor y chasises de hierro están siendo reemplazados por aleaciones de <strong>Aluminio</strong>, reduciendo el peso del vehículo hasta en un 30%.</p>
+                    
+                    <div class="img-container">
+                        <img src="https://i.ytimg.com/vi/EEb7407kVeU/maxresdefault.jpg" alt="Bloque de Motor Fundición Vs Aluminio">
+                        <p class="img-caption"><strong>Transición de Materiales (Hierro Fundido Vs Aluminio):</strong> A la izquierda se observa un bloque de motor tradicional fabricado en aleación de hierro fundido, extremadamente denso y pesado. A la derecha, su equivalente fabricado en una aleación de aluminio, que cumple las mismas funciones termomecánicas pero con una reducción radical del peso, lo que optimiza la inercia del vehículo.</p>
+                    </div>
+                </div>
+
+                <button class="acc-btn" onclick="toggleAccordion(this)">⛏️ Minería y Metalurgia Extractiva <span class="icon">+</span></button>
+                <div class="acc-content">
+                    <p>En la extracción, la diferencia de densidades permite separar los minerales valiosos de la roca estéril (ganga). Mediante técnicas de separación gravimétrica, los materiales más pesados caen y se atrapan, mientras que los más ligeros son arrastrados por el agua, un principio que aplica tanto en la minería artesanal como a escala industrial de miles de toneladas.</p>
+                    
+                    <div class="img-container">
+                        <img src="https://www.mejores-detectores.com/wp-content/uploads/2025/03/Haga-su-propia-rampa-para-lavar-oro-7.webp" alt="Rampa de lavado para extraer oro">
+                        <p class="img-caption"><strong>Separación Gravimétrica Artesanal:</strong> La imagen muestra a un operario echando arena y sedimentos de un río sobre una canaleta de lavado (Sluice Box). Debido a que el Oro es uno de los metales más densos de la naturaleza (19,30 g/cm&sup3;), la corriente de agua no puede arrastrarlo, causando que se precipite rápidamente y quede atrapado en las muescas y tapetes de la canaleta para su posterior recolección.</p>
+                    </div>
+                </div>
+
+                <button class="acc-btn" onclick="toggleAccordion(this)">🔍 Control de Calidad en Fundición <span class="icon">+</span></button>
+                <div class="acc-content">
+                    <p>La densidad es un excelente inspector de defectos invisibles. Cuando se funde una pieza, si su masa final medida en la báscula es menor que la calculada matemáticamente (Volumen CAD &times; Densidad Teórica), el ingeniero metalúrgico sabe inmediatamente que la pieza tiene <strong>porosidad</strong> (burbujas de gas o rechupes) en su interior.</p>
+                    
+                    <div class="img-container">
+                        <img src="https://proleantech.com/wp-content/uploads/2024/04/Squeeze-Casting-Products.jpg" alt="Piezas fundidas en planta">
+                        <p class="img-caption"><strong>Lote de Componentes Fundidos:</strong> Estas piezas fundidas terminadas (producto de Squeeze Casting o fundición a presión) deben pasar por un riguroso control de calidad. Una de las primeras y más fiables pruebas es la verificación de peso y densidad; cualquier variación indica que se formaron vacíos internos en el metal durante la fase de solidificación.</p>
+                    </div>
+                </div>
+
+                <button class="acc-btn" onclick="toggleAccordion(this)">☢️ Energía Nuclear y Militar <span class="icon">+</span></button>
+                <div class="acc-content">
+                    <p>Los metales de densidad extrema actúan como escudos naturales impenetrables. El <strong>Plomo</strong> y el <strong>Tungsteno</strong> se utilizan en reactores nucleares para absorber y bloquear la radiación ionizante letal. Militarmente, el Uranio Empobrecido se emplea en municiones para utilizar su inmensa energía cinética al momento del impacto.</p>
+                    
+                    <div class="img-container">
+                        <img src="https://s1.eestatic.com/2022/11/21/actualidad/720188723_228883656_1024x576.jpg" alt="Portaaviones Nuclear Estadounidense">
+                        <p class="img-caption"><strong>Portaaviones de Propulsión Nuclear:</strong> Esta colosal embarcación militar obtiene su energía de uno o más reactores nucleares a bordo. Para proteger a los miles de tripulantes de los isótopos radiactivos y la fisión, el compartimiento del reactor está encapsulado con blindajes de metales de altísima densidad que evitan cualquier tipo de fuga letal a las cubiertas habitables.</p>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </section>
+
+    <section id="manual">
+        <div class="theory-content">
+            <h1>Manual Operativo del Simulador</h1>
+            
+            <div class="manual-step">
+                <div class="step-num">1</div>
+                <div>
+                    <h3>Configuración de la Aleación</h3>
+                    <p>Selecciona uno de los <strong>30 metales y aleaciones</strong> disponibles. Observarás que el color, brillo y reflectividad del lingote 3D se actualizan automáticamente para emular el metal real.</p>
+                </div>
+            </div>
+
+            <div class="manual-step">
+                <div class="step-num">2</div>
+                <div>
+                    <h3>Lógica de Conversión y Escalamiento 3D</h3>
+                    <p>El simulador es bidireccional. Al calcular un nuevo volumen o una nueva masa, el <strong>lingote 3D escalará su tamaño automáticamente</strong>. Un volumen de 5000 cm³ se verá inmenso comparado con uno de 50 cm³.</p>
+                </div>
+            </div>
+
+            <div class="manual-step">
+                <div class="step-num">3</div>
+                <div>
+                    <h3>Ingreso de Datos (Formato Estricto)</h3>
+                    <p>Utiliza la <strong>coma (,) para los decimales</strong>. El sistema soporta notación científica utilizando la letra <strong>e</strong> (Ejemplo: escribe <code>4,5e3</code> para representar 4500).</p>
+                </div>
+            </div>
+
+            <div class="manual-step">
+                <div class="step-num">4</div>
+                <div>
+                    <h3>Interacción 3D y Caída Física</h3>
+                    <p>Puedes usar tu ratón para <strong>rotar el lingote 3D</strong> y ver sus detalles. Al presionar "Lanzar Probeta al Fluido", el algoritmo ajusta el tiempo de caída basándose en qué tan denso es el material respecto al agua.</p>
+                </div>
+            </div>
+
+ 	    <div class="manual-step">
+                <div class="step-num">5</div>
+                <div>
+                    <h3> ¡Nota Importante!</h3>
+                    <p>Muchos de los metales planteados como ejemplos para la visualización de diferencia de densidades son altamente reactivos al contacto con el agua <em>(ej: Magnesio)<em>, teniendo en algunos casos consecuencia como <strong> explosiones</strong>.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+	 SimuMetalurgia © 2026 <br><br>
+                                                   
+        Desarrollado por:<span> Andrés Felipe Caro Miranda & José Gabriel Franco Correa</span>  |  Asesoría: <span> Prof. Ana Emilse Coy Echeverria & Prof. Carlos Andrés Galán Pinilla.</span> <br><br> Universidad Industrial de Santander | UIS. 
+    </footer>
+
+    <script>
+        let is3DInitialized = false;
+
+        // NAVEGACIÓN PRINCIPAL
+        function showSection(id) {
+            document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('active-nav'));
+            
+            document.getElementById(id).classList.add('active');
+            document.getElementById('nav-' + id).classList.add('active-nav');
+            window.scrollTo({top: 0, behavior: 'smooth'});
+            
+            if(id === 'simulador') {
+                if(!is3DInitialized) {
+                    init3D();
+                    is3DInitialized = true;
+                } else {
+                    resize3D();
+                }
+            }
+        }
+
+        // NAVEGACIÓN DE SUBSECCIONES (TEORÍA VS APLICACIONES)
+        function switchTheoryTab(tabId) {
+            document.querySelectorAll('.th-content').forEach(c => c.classList.remove('active-content'));
+            document.querySelectorAll('.th-tab').forEach(b => b.classList.remove('active-th'));
+            
+            document.getElementById(tabId).classList.add('active-content');
+            
+            let btnId = (tabId === 't-teo') ? 'tab-teo' : 'tab-app';
+            document.getElementById(btnId).classList.add('active-th');
+        }
+
+        // LÓGICA DE BOTONES DESPLEGABLES (ACORDEONES)
+        function toggleAccordion(btn) {
+            btn.classList.toggle("active-acc");
+            let content = btn.nextElementSibling;
+            if (content.classList.contains("active-acc-content")) {
+                content.classList.remove("active-acc-content");
+            } else {
+                content.classList.add("active-acc-content");
+            }
+        }
+
+        // BASE DE DATOS DE MATERIALES
+        const MATERIALS = [
+            { name: "Litio (Li)", rho: 0.534, color: "#d1d5db", rough: 0.4 },
+            { name: "Potasio (K)", rho: 0.862, color: "#cbd5e1", rough: 0.4 },
+            { name: "Sodio (Na)", rho: 0.971, color: "#cbd5e1", rough: 0.4 },
+            { name: "Magnesio (Mg)", rho: 1.738, color: "#94a3b8", rough: 0.3 },
+            { name: "Berilio (Be)", rho: 1.848, color: "#94a3b8", rough: 0.3 },
+            { name: "Aluminio Puro", rho: 2.700, color: "#f8fafc", rough: 0.2 },
+            { name: "Aluminio 6061-T6", rho: 2.710, color: "#e2e8f0", rough: 0.25 },
+            { name: "Titanio Puro", rho: 4.506, color: "#64748b", rough: 0.3 },
+            { name: "Ti-6Al-4V (Grado 5)", rho: 4.430, color: "#64748b", rough: 0.3 },
+            { name: "Vanadio (V)", rho: 6.110, color: "#475569", rough: 0.35 },
+            { name: "Antimonio (Sb)", rho: 6.680, color: "#475569", rough: 0.4 },
+            { name: "Zinc (Zn)", rho: 7.133, color: "#94a3b8", rough: 0.3 },
+            { name: "Cromo (Cr)", rho: 7.190, color: "#cbd5e1", rough: 0.15 },
+            { name: "Manganeso (Mn)", rho: 7.430, color: "#475569", rough: 0.4 },
+            { name: "Estaño (Sn)", rho: 7.310, color: "#e2e8f0", rough: 0.3 },
+            { name: "Hierro Puro", rho: 7.874, color: "#475569", rough: 0.4 },
+            { name: "Acero AISI 1020", rho: 7.850, color: "#334155", rough: 0.35 },
+            { name: "Acero Inoxidable 304", rho: 8.000, color: "#94a3b8", rough: 0.2 },
+            { name: "Latón 70/30", rho: 8.530, color: "#eab308", rough: 0.25 },
+            { name: "Bronce Fosforado", rho: 8.800, color: "#ca8a04", rough: 0.3 },
+            { name: "Níquel (Ni)", rho: 8.908, color: "#cbd5e1", rough: 0.2 },
+            { name: "Cobre Puro", rho: 8.960, color: "#b45309", rough: 0.25 },
+            { name: "Plata Pura", rho: 10.490, color: "#f8fafc", rough: 0.1 },
+            { name: "Plomo (Pb)", rho: 11.340, color: "#1e293b", rough: 0.6 },
+            { name: "Paladio (Pd)", rho: 12.023, color: "#f1f5f9", rough: 0.15 },
+            { name: "Mercurio (Hg)", rho: 13.534, color: "#cbd5e1", rough: 0.05 },
+            { name: "Tungsteno (W)", rho: 19.250, color: "#0f172a", rough: 0.4 },
+            { name: "Oro (24k)", rho: 19.300, color: "#fbbf24", rough: 0.15 },
+            { name: "Platino (Pt)", rho: 21.450, color: "#f1f5f9", rough: 0.15 },
+            { name: "Osmio (Os)", rho: 22.590, color: "#020617", rough: 0.5 }
+        ];
+
+        const select = document.getElementById('material');
+        MATERIALS.forEach((m, index) => {
+            const opt = document.createElement('option');
+            opt.value = index;
+            opt.innerText = `${m.name} (ρ = ${m.rho.toString().replace('.', ',')} g/cm³)`;
+            if(m.name === "Acero AISI 1020") opt.selected = true; 
+            select.appendChild(opt);
+        });
+
+        // PARSEO Y FORMATO DE NÚMEROS
+        function parseInput(str) { return Number(str.replace(',', '.')); }
+        function formatOutput(num) {
+            if(isNaN(num)) return "0,00";
+            return num.toPrecision(5).toString().replace('.', ',');
+        }
+
+        // MOTOR 3D (THREE.JS) CON ESCALAMIENTO DINÁMICO
+        let scene, camera, renderer, ingotMesh, container3D;
+        let targetScale = 1.0; 
+
+        function init3D() {
+            container3D = document.getElementById('ingot3d-container');
+            const width = container3D.clientWidth;
+            const height = container3D.clientHeight;
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color('#f1f5f9');
+
+            camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
+            camera.position.set(4, 3, 5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height);
+            container3D.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(5, 10, 7);
+            scene.add(dirLight);
+
+            const geometry = new THREE.BoxGeometry(3.5, 1.2, 1.8);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x334155, metalness: 0.8, roughness: 0.3
+            });
+            
+            ingotMesh = new THREE.Mesh(geometry, material);
+            scene.add(ingotMesh);
+
+            camera.lookAt(scene.position);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableZoom = false; 
+
+            const mat = MATERIALS[document.getElementById('material').value];
+            update3DMaterial(mat.color, mat.rough);
+
+            animate3D();
+        }
+
+        function resize3D() {
+            if(!container3D || !renderer || !camera) return;
+            const width = container3D.clientWidth;
+            const height = container3D.clientHeight;
+            if(width === 0 || height === 0) return;
+            
+            renderer.setSize(width, height);
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+        }
+
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+            ingotMesh.rotation.y += 0.005; 
+            ingotMesh.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.08);
+            renderer.render(scene, camera);
+        }
+
+        function update3DMaterial(hexColor, rough) {
+            if(ingotMesh) {
+                ingotMesh.material.color.set(hexColor);
+                ingotMesh.material.roughness = rough;
+                ingotMesh.material.metalness = 0.85; 
+            }
+        }
+
+        // ACTUALIZAR INTERFAZ Y CÁLCULOS
+        function updateSimulation() {
+            const mat = MATERIALS[document.getElementById('material').value];
+            document.getElementById('material-info').innerText = mat.name;
+            document.getElementById('material-rho').innerText = `ρ = ${mat.rho.toString().replace('.', ',')} g/cm³`;
+            
+            document.getElementById('ball').style.background = `radial-gradient(circle at 30% 30%, #ffffff, ${mat.color})`;
+            update3DMaterial(mat.color, mat.rough);
+            
+            const mode = document.getElementById('mode').value;
+            if(mode === "massToVol") {
+                document.getElementById('inputLabel').innerText = "Masa del Lingote (g)";
+                document.getElementById('resultLabel').innerText = "Volumen Resultante (cm³)";
+            } else {
+                document.getElementById('inputLabel').innerText = "Volumen del Lingote (cm³)";
+                document.getElementById('resultLabel').innerText = "Masa Resultante (g)";
+            }
+            calculate();
+        }
+
+        function calculate() {
+            const inputStr = document.getElementById('userInput').value;
+            if(inputStr.trim() === "") {
+                document.getElementById('resultValue').innerText = "0,00";
+                targetScale = 0.8; 
+                return;
+            }
+
+            const inputVal = parseInput(inputStr);
+            const mat = MATERIALS[document.getElementById('material').value];
+            const mode = document.getElementById('mode').value;
+            const resDiv = document.getElementById('resultValue');
+
+            if(isNaN(inputVal) || inputVal <= 0) {
+                resDiv.innerText = "Error";
+                targetScale = 0.5;
+                return;
+            }
+
+            let result = (mode === "massToVol") ? (inputVal / mat.rho) : (inputVal * mat.rho);
+            resDiv.innerText = formatOutput(result);
+
+            let currentVol = (mode === "massToVol") ? result : inputVal;
+            let rawScale = Math.cbrt(currentVol / 1000);
+            targetScale = Math.max(0.3, Math.min(rawScale, 2.5));
+        }
+
+        // FÍSICA DE CAÍDA EN EL AGUA
+        function dropBall() {
+            const ball = document.getElementById('ball');
+            const mat = MATERIALS[document.getElementById('material').value];
+            
+            ball.style.transition = "none";
+            ball.style.top = "-45px";
+            
+            setTimeout(() => {
+                if(mat.rho < 1.0) {
+                    ball.style.transition = `top 1.5s cubic-bezier(0.25, 0.8, 0.5, 1)`;
+                    ball.style.top = "0px"; 
+                } else {
+                    let duration = Math.max(0.3, 3 - (mat.rho / 7));
+                    ball.style.transition = `top ${duration}s cubic-bezier(0.5, 0, 0.8, 1)`;
+                    ball.style.top = "215px"; 
+                }
+            }, 50);
+        }
+
+        // Setup Inicial Sin 3D
+        updateSimulation();
+    </script>
+</body>
+</html>
